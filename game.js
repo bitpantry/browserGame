@@ -12,6 +12,11 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 
+// player settings
+const playerHeight = 5;
+camera.position.y = playerHeight;
+let walkTime = 0;
+
 // basic audio setup
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -129,21 +134,33 @@ function shoot() {
   bullets.push({ mesh: bullet, direction: dir.clone(), distance: 0 });
 
   const raycaster = new THREE.Raycaster(camera.position, dir);
-  const intersects = raycaster.intersectObjects(targets, false);
+  const intersects = raycaster.intersectObjects(targets.concat(environment), false);
   if (intersects.length > 0) {
     const obj = intersects[0].object;
-    scene.remove(obj);
-    targets.splice(targets.indexOf(obj), 1);
-    playDestroySound();
+    if (targets.includes(obj)) {
+      scene.remove(obj);
+      targets.splice(targets.indexOf(obj), 1);
+      playDestroySound();
+    }
+    scene.remove(bullet);
+    return;
   }
 }
 
-// floor and walls
+// floor, ceiling and walls
+const environment = [];
 const floorGeometry = new THREE.PlaneGeometry(200, 200);
-const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
 const floor = new THREE.Mesh(floorGeometry, floorMaterial);
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
+environment.push(floor);
+
+const ceiling = new THREE.Mesh(floorGeometry, floorMaterial);
+ceiling.rotation.x = Math.PI / 2;
+ceiling.position.y = 20;
+scene.add(ceiling);
+environment.push(ceiling);
 
 const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.DoubleSide });
 function createWall(width, height, depth, x, y, z) {
@@ -151,6 +168,7 @@ function createWall(width, height, depth, x, y, z) {
   const mesh = new THREE.Mesh(geometry, wallMaterial);
   mesh.position.set(x, y, z);
   scene.add(mesh);
+  environment.push(mesh);
 }
 createWall(200, 20, 2, 0, 10, -100); // back wall
 createWall(200, 20, 2, 0, 10, 100); // front wall
@@ -188,6 +206,18 @@ function animate() {
     controls.moveRight(-velocity.x * delta);
     controls.moveForward(-velocity.z * delta);
 
+    const pos = controls.getObject().position;
+    const boundary = 98;
+    pos.x = Math.max(-boundary, Math.min(boundary, pos.x));
+    pos.z = Math.max(-boundary, Math.min(boundary, pos.z));
+
+    if (moveForward || moveBackward || moveLeft || moveRight) {
+      walkTime += delta * 8;
+    } else {
+      walkTime = 0;
+    }
+    pos.y = playerHeight + Math.sin(walkTime) * 0.2;
+
     // update bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
@@ -197,12 +227,15 @@ function animate() {
       b.distance += move;
 
       const ray = new THREE.Raycaster(prevPos, b.direction, 0, move);
-      const hits = ray.intersectObjects(targets, false);
+      const allObjs = targets.concat(environment);
+      const hits = ray.intersectObjects(allObjs, false);
       if (hits.length > 0) {
         const obj = hits[0].object;
-        scene.remove(obj);
-        targets.splice(targets.indexOf(obj), 1);
-        playDestroySound();
+        if (targets.includes(obj)) {
+          scene.remove(obj);
+          targets.splice(targets.indexOf(obj), 1);
+          playDestroySound();
+        }
         scene.remove(b.mesh);
         bullets.splice(i, 1);
         continue;
