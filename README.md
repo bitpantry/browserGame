@@ -2,6 +2,9 @@
 
 This repository contains a small browser-based FPS demo that uses Three.js.
 
+The game features simple movement and shooting mechanics. When firing your
+weapon, yellow tracers are spawned so you can see bullets fly through the air.
+
 ## Running the game
 
 Modern browsers block module imports when opening HTML files via the `file://` protocol.
