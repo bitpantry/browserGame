@@ -3,9 +3,9 @@
 This repository contains a small browser-based FPS demo that uses Three.js.
 
 The game features simple movement, jumping and a basic gun. Firing the gun
-plays a short shot sound and creates a yellow tracer. Bullets stop when they
-hit walls, the ceiling or the floor, and destroying targets still plays the
-original destroy sound.
+plays a short shot sound and spawns a small yellow bullet. Bullets stop when
+they hit walls, the ceiling or the floor. A green sphere enemy roams the level
+chasing the player. If it touches you, the game restarts.
 
 ## Running the game
 
