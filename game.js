@@ -93,7 +93,7 @@ const gun = new THREE.Mesh(
 gun.position.set(0.5, -0.5, -1);
 camera.add(gun);
 
-const tracers = [];
+const bullets = [];
 
 const onKeyDown = function (event) {
   switch (event.code) {
@@ -156,30 +156,33 @@ function shootGun() {
   camera.getWorldDirection(dir);
 
   const raycaster = new THREE.Raycaster(camera.position, dir, 0, 200);
-  const intersects = raycaster.intersectObjects(targets.concat(environment), false);
+  const intersects = raycaster.intersectObjects([enemy].concat(environment), false);
 
-  let endPoint;
+  let maxDist = 200;
   if (intersects.length > 0) {
     const hit = intersects[0];
-    endPoint = hit.point.clone();
+    maxDist = hit.distance;
     const obj = hit.object;
-    if (targets.includes(obj)) {
-      scene.remove(obj);
-      targets.splice(targets.indexOf(obj), 1);
+    if (obj === enemy) {
+      scene.remove(enemy);
+      enemy = spawnEnemy();
       playDestroySound();
     } else {
       playClangSound();
     }
-  } else {
-    endPoint = camera.position.clone().add(dir.multiplyScalar(200));
   }
 
-  const tracerGeom = new THREE.BufferGeometry().setFromPoints([camera.position, endPoint]);
-  const tracerMat = new THREE.LineBasicMaterial({ color: 0xffff00 });
-  const tracer = new THREE.Line(tracerGeom, tracerMat);
-  tracer.userData.ttl = 0.05;
-  scene.add(tracer);
-  tracers.push(tracer);
+  const bullet = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.1, 1, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffff00 })
+  );
+  bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  bullet.position.copy(camera.position).add(dir.clone().multiplyScalar(1));
+  bullet.userData.dir = dir.clone();
+  bullet.userData.speed = 600;
+  bullet.userData.remaining = maxDist;
+  scene.add(bullet);
+  bullets.push(bullet);
 }
 
 // floor, ceiling and walls
@@ -210,15 +213,17 @@ createWall(200, 20, 2, 0, 10, 100); // front wall
 createWall(2, 20, 200, -100, 10, 0); // left wall
 createWall(2, 20, 200, 100, 10, 0); // right wall
 
-// targets to hit
-const targetMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-const targets = [];
-for (let i = 0; i < 5; i++) {
-  const cube = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), targetMaterial);
-  cube.position.set((Math.random() - 0.5) * 80, 2.5, (Math.random() - 0.5) * 80);
-  scene.add(cube);
-  targets.push(cube);
+// chasing enemy
+const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+let enemy;
+function spawnEnemy() {
+  const e = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), enemyMaterial);
+  e.position.set((Math.random() - 0.5) * 60, 2.5, (Math.random() - 0.5) * 60);
+  scene.add(e);
+  return e;
 }
+enemy = spawnEnemy();
+const enemySpeed = 20;
 
 const clock = new THREE.Clock();
 
@@ -274,12 +279,27 @@ function animate() {
       pos.y += Math.sin(walkTime) * 0.2;
     }
 
-    for (let i = tracers.length - 1; i >= 0; i--) {
-      const t = tracers[i];
-      t.userData.ttl -= delta;
-      if (t.userData.ttl <= 0) {
-        scene.remove(t);
-        tracers.splice(i, 1);
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      const step = b.userData.speed * delta;
+      b.position.add(b.userData.dir.clone().multiplyScalar(step));
+      b.userData.remaining -= step;
+      if (b.userData.remaining <= 0) {
+        scene.remove(b);
+        bullets.splice(i, 1);
+      }
+    }
+
+    if (enemy) {
+      const playerPos = controls.getObject().position;
+      const dirToPlayer = playerPos.clone().sub(enemy.position);
+      const dist = dirToPlayer.length();
+      dirToPlayer.normalize();
+      enemy.position.add(dirToPlayer.multiplyScalar(enemySpeed * delta));
+      enemy.position.y = 2.5;
+      if (dist < 3) {
+        alert('You were caught!');
+        window.location.reload();
       }
     }
   }
