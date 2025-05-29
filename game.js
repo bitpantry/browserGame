@@ -12,11 +12,43 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 
+// basic audio setup
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playGunSound() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function playDestroySound() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+  osc.stop(audioCtx.currentTime + 0.3);
+}
+
 const blocker = document.getElementById('blocker');
 const instructions = document.getElementById('instructions');
 
 instructions.addEventListener('click', () => {
   controls.lock();
+  audioCtx.resume();
 });
 
 controls.addEventListener('lock', () => blocker.classList.add('hidden'));
@@ -84,6 +116,7 @@ document.addEventListener('click', shoot);
 
 function shoot() {
   if (!controls.isLocked) return;
+  playGunSound();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
 
@@ -101,6 +134,7 @@ function shoot() {
     const obj = intersects[0].object;
     scene.remove(obj);
     targets.splice(targets.indexOf(obj), 1);
+    playDestroySound();
   }
 }
 
@@ -168,6 +202,7 @@ function animate() {
         const obj = hits[0].object;
         scene.remove(obj);
         targets.splice(targets.indexOf(obj), 1);
+        playDestroySound();
         scene.remove(b.mesh);
         bullets.splice(i, 1);
         continue;
