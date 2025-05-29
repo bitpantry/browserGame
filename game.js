@@ -16,21 +16,25 @@ scene.add(controls.getObject());
 const playerHeight = 5;
 camera.position.y = playerHeight;
 let walkTime = 0;
+let verticalVelocity = 0;
+const gravity = 800;
+const jumpSpeed = 300;
 
 // basic audio setup
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function playGunSound() {
+function playSwingSound() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+  osc.stop(audioCtx.currentTime + 0.3);
 }
 
 function playDestroySound() {
@@ -46,6 +50,21 @@ function playDestroySound() {
   osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
   gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
   osc.stop(audioCtx.currentTime + 0.3);
+}
+
+function playClangSound() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+  osc.stop(audioCtx.currentTime + 0.2);
 }
 
 const blocker = document.getElementById('blocker');
@@ -67,10 +86,15 @@ let moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-// bullet/tracer storage
-const bullets = [];
-const bulletSpeed = 400; // units per second
-const bulletMaxDistance = 200;
+const sword = new THREE.Mesh(
+  new THREE.BoxGeometry(0.1, 2, 0.3),
+  new THREE.MeshBasicMaterial({ color: 0xcccccc })
+);
+sword.position.set(0.5, -0.5, -1);
+camera.add(sword);
+
+let swingTime = 0;
+const swingDuration = 0.3;
 
 const onKeyDown = function (event) {
   switch (event.code) {
@@ -89,6 +113,11 @@ const onKeyDown = function (event) {
     case 'ArrowRight':
     case 'KeyD':
       moveRight = true;
+      break;
+    case 'Space':
+      if (controls.isLocked && controls.getObject().position.y <= playerHeight + 0.01) {
+        verticalVelocity = jumpSpeed;
+      }
       break;
   }
 };
@@ -111,29 +140,23 @@ const onKeyUp = function (event) {
     case 'KeyD':
       moveRight = false;
       break;
+    case 'Space':
+      break;
   }
 };
 
 document.addEventListener('keydown', onKeyDown);
 document.addEventListener('keyup', onKeyUp);
 
-document.addEventListener('click', shoot);
+document.addEventListener('click', swingSword);
 
-function shoot() {
+function swingSword() {
   if (!controls.isLocked) return;
-  playGunSound();
+  playSwingSound();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
 
-  const bullet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffff00 })
-  );
-  bullet.position.copy(camera.position);
-  scene.add(bullet);
-  bullets.push({ mesh: bullet, direction: dir.clone(), distance: 0 });
-
-  const raycaster = new THREE.Raycaster(camera.position, dir);
+  const raycaster = new THREE.Raycaster(camera.position, dir, 0, 10);
   const intersects = raycaster.intersectObjects(targets.concat(environment), false);
   if (intersects.length > 0) {
     const obj = intersects[0].object;
@@ -141,10 +164,11 @@ function shoot() {
       scene.remove(obj);
       targets.splice(targets.indexOf(obj), 1);
       playDestroySound();
+    } else {
+      playClangSound();
     }
-    scene.remove(bullet);
-    return;
   }
+  swingTime = 0;
 }
 
 // floor, ceiling and walls
@@ -175,7 +199,7 @@ createWall(200, 20, 2, 0, 10, 100); // front wall
 createWall(2, 20, 200, -100, 10, 0); // left wall
 createWall(2, 20, 200, 100, 10, 0); // right wall
 
-// targets to shoot
+// targets to hit
 const targetMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 const targets = [];
 for (let i = 0; i < 5; i++) {
@@ -211,40 +235,36 @@ function animate() {
     pos.x = Math.max(-boundary, Math.min(boundary, pos.x));
     pos.z = Math.max(-boundary, Math.min(boundary, pos.z));
 
-    if (moveForward || moveBackward || moveLeft || moveRight) {
-      walkTime += delta * 8;
-    } else {
+    const onGround = pos.y <= playerHeight + 0.01;
+    if (onGround) {
+      if (moveForward || moveBackward || moveLeft || moveRight) {
+        walkTime += delta * 8;
+      } else {
+        walkTime = 0;
+      }
+    }
+
+    if (!onGround || verticalVelocity !== 0) {
       walkTime = 0;
     }
-    pos.y = playerHeight + Math.sin(walkTime) * 0.2;
 
-    // update bullets
-    for (let i = bullets.length - 1; i >= 0; i--) {
-      const b = bullets[i];
-      const move = bulletSpeed * delta;
-      const prevPos = b.mesh.position.clone();
-      b.mesh.position.add(b.direction.clone().multiplyScalar(move));
-      b.distance += move;
+    verticalVelocity -= gravity * delta;
+    pos.y += verticalVelocity * delta;
+    if (pos.y <= playerHeight) {
+      pos.y = playerHeight;
+      verticalVelocity = 0;
+    }
 
-      const ray = new THREE.Raycaster(prevPos, b.direction, 0, move);
-      const allObjs = targets.concat(environment);
-      const hits = ray.intersectObjects(allObjs, false);
-      if (hits.length > 0) {
-        const obj = hits[0].object;
-        if (targets.includes(obj)) {
-          scene.remove(obj);
-          targets.splice(targets.indexOf(obj), 1);
-          playDestroySound();
-        }
-        scene.remove(b.mesh);
-        bullets.splice(i, 1);
-        continue;
-      }
+    if (pos.y === playerHeight) {
+      pos.y += Math.sin(walkTime) * 0.2;
+    }
 
-      if (b.distance > bulletMaxDistance) {
-        scene.remove(b.mesh);
-        bullets.splice(i, 1);
-      }
+    if (swingTime < swingDuration) {
+      swingTime += delta;
+      const t = swingTime / swingDuration;
+      sword.rotation.z = -Math.sin(t * Math.PI) * 1.2;
+    } else {
+      sword.rotation.z = 0;
     }
   }
 

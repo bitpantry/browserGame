@@ -2,10 +2,9 @@
 
 This repository contains a small browser-based FPS demo that uses Three.js.
 
-The game features simple movement and shooting mechanics. When firing your
-weapon, yellow tracers are spawned so you can see bullets fly through the air.
-You will also hear basic sound effects when you shoot and when targets are
-destroyed.
+The game features simple movement, jumping and melee combat with a sword. When
+you swing the sword you hear a swoosh sound, and hitting walls produces a metal
+clang. Targets break with the original destroy sound.
 
 ## Running the game
 
