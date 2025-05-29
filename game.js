@@ -18,23 +18,23 @@ camera.position.y = playerHeight;
 let walkTime = 0;
 let verticalVelocity = 0;
 const gravity = 800;
-const jumpSpeed = 300;
+const jumpSpeed = 150; // reduce jump height so walls stay visible
 
 // basic audio setup
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function playSwingSound() {
+function playShotSound() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-  gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
   osc.start();
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
-  osc.stop(audioCtx.currentTime + 0.3);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+  osc.stop(audioCtx.currentTime + 0.1);
 }
 
 function playDestroySound() {
@@ -86,15 +86,14 @@ let moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-const sword = new THREE.Mesh(
-  new THREE.BoxGeometry(0.1, 2, 0.3),
-  new THREE.MeshBasicMaterial({ color: 0xcccccc })
+const gun = new THREE.Mesh(
+  new THREE.BoxGeometry(0.2, 0.2, 1),
+  new THREE.MeshBasicMaterial({ color: 0x222222 })
 );
-sword.position.set(0.5, -0.5, -1);
-camera.add(sword);
+gun.position.set(0.5, -0.5, -1);
+camera.add(gun);
 
-let swingTime = 0;
-const swingDuration = 0.3;
+const tracers = [];
 
 const onKeyDown = function (event) {
   switch (event.code) {
@@ -148,18 +147,22 @@ const onKeyUp = function (event) {
 document.addEventListener('keydown', onKeyDown);
 document.addEventListener('keyup', onKeyUp);
 
-document.addEventListener('click', swingSword);
+document.addEventListener('click', shootGun);
 
-function swingSword() {
+function shootGun() {
   if (!controls.isLocked) return;
-  playSwingSound();
+  playShotSound();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
 
-  const raycaster = new THREE.Raycaster(camera.position, dir, 0, 10);
+  const raycaster = new THREE.Raycaster(camera.position, dir, 0, 200);
   const intersects = raycaster.intersectObjects(targets.concat(environment), false);
+
+  let endPoint;
   if (intersects.length > 0) {
-    const obj = intersects[0].object;
+    const hit = intersects[0];
+    endPoint = hit.point.clone();
+    const obj = hit.object;
     if (targets.includes(obj)) {
       scene.remove(obj);
       targets.splice(targets.indexOf(obj), 1);
@@ -167,8 +170,16 @@ function swingSword() {
     } else {
       playClangSound();
     }
+  } else {
+    endPoint = camera.position.clone().add(dir.multiplyScalar(200));
   }
-  swingTime = 0;
+
+  const tracerGeom = new THREE.BufferGeometry().setFromPoints([camera.position, endPoint]);
+  const tracerMat = new THREE.LineBasicMaterial({ color: 0xffff00 });
+  const tracer = new THREE.Line(tracerGeom, tracerMat);
+  tracer.userData.ttl = 0.05;
+  scene.add(tracer);
+  tracers.push(tracer);
 }
 
 // floor, ceiling and walls
@@ -250,6 +261,10 @@ function animate() {
 
     verticalVelocity -= gravity * delta;
     pos.y += verticalVelocity * delta;
+    if (pos.y > ceiling.position.y - 1) {
+      pos.y = ceiling.position.y - 1;
+      verticalVelocity = 0;
+    }
     if (pos.y <= playerHeight) {
       pos.y = playerHeight;
       verticalVelocity = 0;
@@ -259,12 +274,13 @@ function animate() {
       pos.y += Math.sin(walkTime) * 0.2;
     }
 
-    if (swingTime < swingDuration) {
-      swingTime += delta;
-      const t = swingTime / swingDuration;
-      sword.rotation.z = -Math.sin(t * Math.PI) * 1.2;
-    } else {
-      sword.rotation.z = 0;
+    for (let i = tracers.length - 1; i >= 0; i--) {
+      const t = tracers[i];
+      t.userData.ttl -= delta;
+      if (t.userData.ttl <= 0) {
+        scene.remove(t);
+        tracers.splice(i, 1);
+      }
     }
   }
 

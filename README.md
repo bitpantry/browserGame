@@ -2,9 +2,10 @@
 
 This repository contains a small browser-based FPS demo that uses Three.js.
 
-The game features simple movement, jumping and melee combat with a sword. When
-you swing the sword you hear a swoosh sound, and hitting walls produces a metal
-clang. Targets break with the original destroy sound.
+The game features simple movement, jumping and a basic gun. Firing the gun
+plays a short shot sound and creates a yellow tracer. Bullets stop when they
+hit walls, the ceiling or the floor, and destroying targets still plays the
+original destroy sound.
 
 ## Running the game
 
