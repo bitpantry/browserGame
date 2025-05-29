@@ -30,6 +30,11 @@ let moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
+// bullet/tracer storage
+const bullets = [];
+const bulletSpeed = 400; // units per second
+const bulletMaxDistance = 200;
+
 const onKeyDown = function (event) {
   switch (event.code) {
     case 'ArrowUp':
@@ -79,8 +84,18 @@ document.addEventListener('click', shoot);
 
 function shoot() {
   if (!controls.isLocked) return;
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+
+  const bullet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffff00 })
+  );
+  bullet.position.copy(camera.position);
+  scene.add(bullet);
+  bullets.push({ mesh: bullet, direction: dir.clone(), distance: 0 });
+
+  const raycaster = new THREE.Raycaster(camera.position, dir);
   const intersects = raycaster.intersectObjects(targets, false);
   if (intersects.length > 0) {
     const obj = intersects[0].object;
@@ -138,6 +153,31 @@ function animate() {
 
     controls.moveRight(-velocity.x * delta);
     controls.moveForward(-velocity.z * delta);
+
+    // update bullets
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      const move = bulletSpeed * delta;
+      const prevPos = b.mesh.position.clone();
+      b.mesh.position.add(b.direction.clone().multiplyScalar(move));
+      b.distance += move;
+
+      const ray = new THREE.Raycaster(prevPos, b.direction, 0, move);
+      const hits = ray.intersectObjects(targets, false);
+      if (hits.length > 0) {
+        const obj = hits[0].object;
+        scene.remove(obj);
+        targets.splice(targets.indexOf(obj), 1);
+        scene.remove(b.mesh);
+        bullets.splice(i, 1);
+        continue;
+      }
+
+      if (b.distance > bulletMaxDistance) {
+        scene.remove(b.mesh);
+        bullets.splice(i, 1);
+      }
+    }
   }
 
   renderer.render(scene, camera);
