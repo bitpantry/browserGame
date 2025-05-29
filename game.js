@@ -94,6 +94,8 @@ gun.position.set(0.5, -0.5, -1);
 camera.add(gun);
 
 const bullets = [];
+const explosions = [];
+const stains = [];
 
 const onKeyDown = function (event) {
   switch (event.code) {
@@ -156,14 +158,16 @@ function shootGun() {
   camera.getWorldDirection(dir);
 
   const raycaster = new THREE.Raycaster(camera.position, dir, 0, 200);
-  const intersects = raycaster.intersectObjects([enemy].concat(environment), false);
+  const intersects = raycaster.intersectObjects([enemy].concat(environment), true);
 
   let maxDist = 200;
   if (intersects.length > 0) {
     const hit = intersects[0];
     maxDist = hit.distance;
     const obj = hit.object;
-    if (obj === enemy) {
+    if (obj === enemy || enemy.children.includes(obj)) {
+      createExplosion(enemy.position);
+      addStain(enemy.position);
       scene.remove(enemy);
       enemy = spawnEnemy();
       playDestroySound();
@@ -215,15 +219,54 @@ createWall(2, 20, 200, 100, 10, 0); // right wall
 
 // chasing enemy
 const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const faceMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 let enemy;
 function spawnEnemy() {
-  const e = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), enemyMaterial);
-  e.position.set((Math.random() - 0.5) * 60, 2.5, (Math.random() - 0.5) * 60);
-  scene.add(e);
-  return e;
+  const body = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), enemyMaterial);
+  const eyeGeom = new THREE.SphereGeometry(0.3, 8, 8);
+  const leftEye = new THREE.Mesh(eyeGeom, faceMaterial);
+  leftEye.position.set(-0.8, 0.8, 2.2);
+  const rightEye = new THREE.Mesh(eyeGeom, faceMaterial);
+  rightEye.position.set(0.8, 0.8, 2.2);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.5), faceMaterial);
+  mouth.position.set(0, -0.5, 2.3);
+  body.add(leftEye, rightEye, mouth);
+  body.position.set((Math.random() - 0.5) * 60, 2.5, (Math.random() - 0.5) * 60);
+  scene.add(body);
+  return body;
 }
 enemy = spawnEnemy();
 const enemySpeed = 20;
+
+function createExplosion(pos) {
+  for (let i = 0; i < 20; i++) {
+    const p = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    p.position.copy(pos);
+    const dir = new THREE.Vector3(
+      (Math.random() - 0.5) * 2,
+      Math.random() * 2,
+      (Math.random() - 0.5) * 2
+    ).normalize();
+    p.userData.velocity = dir.multiplyScalar(40 + Math.random() * 40);
+    p.userData.life = 1;
+    scene.add(p);
+    explosions.push(p);
+  }
+}
+
+function addStain(pos) {
+  const stain = new THREE.Mesh(
+    new THREE.CircleGeometry(2.5, 16),
+    new THREE.MeshBasicMaterial({ color: 0x550000 })
+  );
+  stain.rotation.x = -Math.PI / 2;
+  stain.position.set(pos.x, 0.05, pos.z);
+  scene.add(stain);
+  stains.push(stain);
+}
 
 const clock = new THREE.Clock();
 
@@ -287,6 +330,17 @@ function animate() {
       if (b.userData.remaining <= 0) {
         scene.remove(b);
         bullets.splice(i, 1);
+      }
+    }
+
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      const p = explosions[i];
+      p.userData.velocity.y -= gravity * 0.3 * delta;
+      p.position.add(p.userData.velocity.clone().multiplyScalar(delta));
+      p.userData.life -= delta;
+      if (p.userData.life <= 0) {
+        scene.remove(p);
+        explosions.splice(i, 1);
       }
     }
 
